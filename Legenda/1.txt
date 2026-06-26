@@ -1,0 +1,22 @@
+# Legenda do modelo 1
+# Formato: numero:codigo-hex
+# A linha "nome:" define o titulo mostrado no site (opcional)
+
+nome:Gato
+
+1:#39251D
+2:#2D2C26
+3:#0B0A07
+4:#58544D
+5:#75706A
+6:#9D8F7D
+7:#B4A794
+8:#CABFAC
+9:#DED9CA
+10:#544330
+11:#8A7864
+12:#755E47
+13:#D6B38A
+14:#AC8764
+15:#AC7543
+16:#CEA06A
