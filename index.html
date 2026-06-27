@@ -2,7 +2,7 @@
 <html lang="pt-PT">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>InesArT · Pintura por Números</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -204,7 +204,7 @@
     overflow:hidden;
     background:#fff;
     cursor:crosshair;
-    touch-action:none;
+    touch-action:manipulation;
     min-height:120px;
   }
 
@@ -458,7 +458,7 @@
 
   var MAX_PROBE = 200;
   var FOTO_EXTS = ['png','jpg','jpeg','PNG','JPG','JPEG'];
-  var MAX_CANVAS_WIDTH = 1100;
+  var MAX_CANVAS_WIDTH = 1500;
   var BUILD_TAG = String(Date.now()); // simple cache-bust per page load
 
   var statusBox   = document.getElementById('statusBox');
@@ -669,22 +669,61 @@
     return [Math.floor(cx), Math.floor(cy)];
   }
 
+  // Distinguish a tap (paint) from a drag/pan or pinch-zoom gesture (don't paint).
+  // We only commit a fill on pointerup, and only if: a single pointer was active
+  // the whole time, it didn't move past a small threshold, and it wasn't held too long.
+  var TAP_MOVE_THRESHOLD = 10; // px, in screen/CSS space
+  var TAP_TIME_THRESHOLD = 600; // ms
+  var activePointers = new Map(); // pointerId -> {x,y,t,moved}
+  var multiTouchActive = false;
+
+  function resetGestureStateIfIdle(){
+    if(activePointers.size === 0) multiTouchActive = false;
+  }
+
   stage.addEventListener('pointerdown', function(evt){
     if(!ready) return;
-    evt.preventDefault();
-    var coords = pointerToCanvasCoords(evt);
-    var x = coords[0], y = coords[1];
-    if(x<0||y<0||x>=W||y>=H) return;
+    activePointers.set(evt.pointerId, { x:evt.clientX, y:evt.clientY, t:Date.now(), moved:false });
+    if(activePointers.size > 1){
+      // a second finger arrived: this is becoming a multi-touch gesture (e.g. pinch-zoom)
+      multiTouchActive = true;
+    }
+  }, { passive:true });
 
-    stage.classList.add('busy');
-    setTimeout(function(){
-      floodFillAt(x, y, current.hex);
-      stage.classList.remove('busy');
-      paintStatus.textContent = current.n === 0
-        ? 'Área limpa com a borracha.'
-        : 'Área pintada com a cor ' + current.n + '.';
-    }, 0);
-  }, { passive:false });
+  stage.addEventListener('pointermove', function(evt){
+    var p = activePointers.get(evt.pointerId);
+    if(!p) return;
+    var dx = evt.clientX - p.x, dy = evt.clientY - p.y;
+    if(Math.sqrt(dx*dx + dy*dy) > TAP_MOVE_THRESHOLD) p.moved = true;
+  }, { passive:true });
+
+  function endPointer(evt, allowFill){
+    var p = activePointers.get(evt.pointerId);
+    activePointers.delete(evt.pointerId);
+
+    if(allowFill && p && !multiTouchActive && !p.moved && (Date.now() - p.t) < TAP_TIME_THRESHOLD){
+      var coords = pointerToCanvasCoords(evt);
+      var x = coords[0], y = coords[1];
+      if(x>=0 && y>=0 && x<W && y<H){
+        stage.classList.add('busy');
+        setTimeout(function(){
+          floodFillAt(x, y, current.hex);
+          stage.classList.remove('busy');
+          paintStatus.textContent = current.n === 0
+            ? 'Área limpa com a borracha.'
+            : 'Área pintada com a cor ' + current.n + '.';
+        }, 0);
+      }
+    }
+    resetGestureStateIfIdle();
+  }
+
+  stage.addEventListener('pointerup', function(evt){ endPointer(evt, true); }, { passive:true });
+  stage.addEventListener('pointercancel', function(evt){ endPointer(evt, false); }, { passive:true });
+  stage.addEventListener('pointerleave', function(evt){
+    // pointer left the stage without a proper up/cancel (rare, but be safe)
+    if(activePointers.has(evt.pointerId)) endPointer(evt, false);
+  }, { passive:true });
 
   // ---------------------------------------------------------------
   // Palette UI
